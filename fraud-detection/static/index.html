@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FraudWatch · Real-Time Fraud Detection</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b0f1a;--card:#131a2b;--line:#222c44;--tx:#e8ecf5;--mut:#8591ad;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--acc:#6366f1}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#1b2250 0,transparent 60%),var(--bg);color:var(--tx);font:14px/1.5 Inter,system-ui,Segoe UI,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:18px 28px;border-bottom:1px solid var(--line)}
+h1{font-size:19px;margin:0;display:flex;gap:10px;align-items:center}.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--acc),#a855f7);display:grid;place-items:center}
+.live{display:flex;align-items:center;gap:8px;color:var(--mut)}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 #22c55e88;animation:p 1.6s infinite}.paused .dot{background:var(--mut);animation:none}
+@keyframes p{70%{box-shadow:0 0 0 9px #22c55e00}}
+button{background:var(--card);border:1px solid var(--line);color:var(--tx);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit}button:hover{border-color:var(--acc)}
+main{padding:24px 28px;max-width:1400px;margin:auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.kpi .l{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.kpi .v{font-size:28px;font-weight:700;margin-top:4px}.kpi .s{color:var(--mut);font-size:12px}
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;margin-top:14px}@media(max-width:980px){.grid{grid-template-columns:1fr}}
+h2{font-size:13px;margin:0 0 12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+#feed{display:flex;flex-direction:column;gap:9px;max-height:620px;overflow:auto}
+.tx{border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:11px;padding:11px 14px;background:#0f1525;animation:in .4s}
+@keyframes in{from{opacity:0;transform:translateY(-8px)}}
+.tx.HIGH{border-left-color:var(--bad);background:linear-gradient(90deg,#ef444418,#0f1525 60%)}.tx.REVIEW{border-left-color:var(--warn)}
+.top{display:flex;justify-content:space-between;align-items:center}.id{color:var(--mut)}.amt{font-size:20px;font-weight:700}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;letter-spacing:.04em}
+.b-HIGH{background:#ef444426;color:#ff8080}.b-REVIEW{background:#f59e0b26;color:#fbbf24}.b-OK{background:#22c55e22;color:#4ade80}
+.bar{height:5px;background:#1d2640;border-radius:9px;margin:8px 0 5px;overflow:hidden}.bar i{display:block;height:100%;border-radius:9px}
+.meta{display:flex;justify-content:space-between;color:var(--mut);font-size:12px}.gt{color:#c4b5fd}
+table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:7px 6px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:500;font-size:12px}
+tr.best td{color:#a5b4fc;font-weight:600}.chartbox{height:230px}
+</style></head><body>
+<header><h1><span class="logo">🛡️</span>FraudWatch <span style="color:var(--mut);font-weight:400">Real-Time Fraud Detection</span></h1>
+<div class="live" id="live"><span class="dot"></span><span id="lt">Streaming</span><button id="tg">Pause</button></div></header>
+<main>
+<section class="kpis">
+ <div class="card kpi"><div class="l">Transactions</div><div class="v" id="k1">0</div><div class="s">scored so far</div></div>
+ <div class="card kpi"><div class="l">Flagged</div><div class="v" id="k2" style="color:var(--warn)">0</div><div class="s" id="k2s">&nbsp;</div></div>
+ <div class="card kpi"><div class="l">Fraud caught</div><div class="v" id="k3" style="color:var(--ok)">0</div><div class="s" id="k3s">&nbsp;</div></div>
+ <div class="card kpi"><div class="l">Amount flagged</div><div class="v" id="k4">₹0</div><div class="s" id="k4s">&nbsp;</div></div>
+ <div class="card kpi"><div class="l">Avg latency</div><div class="v" id="k5">0 ms</div><div class="s">all 5 models + ensemble</div></div>
+</section>
+<section class="grid">
+ <div class="card"><h2>Live transaction feed</h2><div id="feed"></div></div>
+ <div style="display:flex;flex-direction:column;gap:14px">
+  <div class="card"><h2>Fraud probability over time</h2><div class="chartbox"><canvas id="ch"></canvas></div></div>
+  <div class="card"><h2>Model comparison (held-out test set)</h2><table id="mt"></table>
+   <p class="s" style="color:var(--mut);font-size:12px;margin:10px 0 0">PR-AUC is the headline metric: accuracy is meaningless at this class imbalance.</p></div>
+  <div class="card"><h2>Latest transaction · per-model scores</h2><div class="chartbox"><canvas id="ms"></canvas></div></div>
+ </div></section></main>
+<script>
+const $=id=>document.getElementById(id),inr=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+const cls=s=>s==='HIGH RISK'?'HIGH':s==='REVIEW'?'REVIEW':'OK';
+const col=p=>p>=.8?'#ef4444':p>=.5?'#f59e0b':'#22c55e';
+Chart.defaults.color='#8591ad';Chart.defaults.borderColor='#222c44';
+const ch=new Chart($('ch'),{type:'line',data:{labels:[],datasets:[{data:[],borderColor:'#6366f1',backgroundColor:'#6366f122',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:[]}]},
+ options:{maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:1},x:{display:false}}}});
+const ms=new Chart($('ms'),{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:[]}]},
+ options:{indexAxis:'y',maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{min:0,max:1}}}});
+async function j(u,o){return (await fetch(u,o)).json()}
+async function tick(){
+ const [s,t]=await Promise.all([j('/api/stats'),j('/api/transactions?limit=30')]);
+ $('k1').textContent=s.n.toLocaleString();$('k2').textContent=s.flagged;$('k2s').textContent=s.n?(100*s.flagged/s.n).toFixed(1)+'% of traffic':'\u00a0';
+ $('k3').textContent=s.caught+' / '+s.fraud;$('k3s').textContent=s.false_pos+' false alarms';
+ $('k4').textContent=inr(s.amount_flagged);$('k5').textContent=s.latency.toFixed(0)+' ms';
+ $('live').classList.toggle('paused',!s.running);$('lt').textContent=s.running?'Streaming':'Paused';$('tg').textContent=s.running?'Pause':'Resume';
+ $('feed').innerHTML=t.map(x=>`<div class="tx ${cls(x.status)}"><div class="top"><span class="id">Transaction #${x.id}</span>
+  <span class="badge b-${cls(x.status)}">${x.status==='HIGH RISK'?'🚨 ':x.status==='REVIEW'?'⚠️ ':'✅ '}${x.status}</span></div>
+  <div class="amt">${inr(x.amount)}</div><div class="bar"><i style="width:${(x.prob*100).toFixed(1)}%;background:${col(x.prob)}"></i></div>
+  <div class="meta"><span>Fraud probability: <b style="color:${col(x.prob)}">${(x.prob*100).toFixed(1)}%</b></span>
+  <span>${String(x.hour).padStart(2,'0')}:00 · ${x.latency_ms.toFixed(0)} ms${x.actual?' · <span class="gt">ground truth: fraud</span>':''}</span></div></div>`).join('');
+ const r=[...t].reverse();ch.data.labels=r.map(x=>x.id);ch.data.datasets[0].data=r.map(x=>x.prob);
+ ch.data.datasets[0].pointBackgroundColor=r.map(x=>col(x.prob));ch.update();
+ if(t[0]){const e=Object.entries(t[0].scores);ms.data.labels=e.map(x=>x[0]);ms.data.datasets[0].data=e.map(x=>x[1]);
+  ms.data.datasets[0].backgroundColor=e.map(x=>x[0]==='Ensemble'?'#6366f1':'#334166');ms.update()}
+}
+(async()=>{const m=await j('/api/models'),e=Object.entries(m.models),best=Math.max(...e.map(x=>x[1].pr_auc));
+ $('mt').innerHTML='<tr><th>Model</th><th>PR-AUC</th><th>ROC-AUC</th><th>Prec@100</th><th>Recall</th></tr>'+
+ e.map(([n,v])=>`<tr class="${v.pr_auc===best?'best':''}"><td>${n}</td><td>${v.pr_auc}</td><td>${v.roc_auc}</td><td>${v.precision_at_100}</td><td>${v.recall}</td></tr>`).join('')})();
+$('tg').onclick=()=>j('/api/stream/toggle',{method:'POST'}).then(tick);
+tick();setInterval(tick,1500);
+</script></body></html>
